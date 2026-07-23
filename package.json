@@ -1,6 +1,6 @@
 {
   "name": "pulsedeck",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "PulseDeck — DJ software with big display, AI track matching, effects, MIDI and multi-language tutorial",
   "main": "electron-main.js",
   "author": "PulseDeck",
@@ -17,6 +17,9 @@
   "build": {
     "appId": "com.pulsedeck.dj",
     "productName": "PulseDeck",
+    "asarUnpack": [
+      "audio/**/*"
+    ],
     "publish": [
       {
         "provider": "github",
@@ -31,7 +34,8 @@
       "midi.js",
       "tutorial.js",
       "electron-main.js",
-      "icon.png"
+      "icon.png",
+      "audio/**/*"
     ],
     "win": {
       "target": [

@@ -163,20 +163,84 @@ function tutShow() {
   $('#tutMute').textContent = TUT.muted ? '🔇' : '🔊';
 }
 
+// טעינת רשימת הקולות (אסינכרוני בחלק מהדפדפנים) — שומרים במטמון
+let _voices = [];
+function loadVoices() { if (window.speechSynthesis) _voices = speechSynthesis.getVoices() || []; }
+if (window.speechSynthesis) {
+  loadVoices();
+  speechSynthesis.addEventListener('voiceschanged', loadVoices);
+}
+
+// בחירת הקול הכי איכותי ואנושי שקיים במחשב עבור השפה
+function bestVoiceFor(langTag) {
+  if (!_voices.length) loadVoices();
+  const base = langTag.split('-')[0].toLowerCase();
+  const matches = _voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(base));
+  if (!matches.length) return null;
+  const score = v => {
+    const n = (v.name || '').toLowerCase();
+    let s = 0;
+    if (/natural|neural/.test(n)) s += 100;   // קולות נוירליים — הכי אנושיים
+    if (v.localService === false) s += 40;     // קולות רשת/מקוונים — בד"כ איכותיים
+    if (/google/.test(n)) s += 30;
+    if (/online/.test(n)) s += 20;
+    if (/microsoft/.test(n)) s += 8;
+    if (v.lang.toLowerCase() === langTag.toLowerCase()) s += 5;
+    if (v.default) s += 2;
+    return s;
+  };
+  return matches.slice().sort((a, b) => score(b) - score(a))[0];
+}
+
+function stopTutAudio() {
+  clearTimeout(TUT._audioSafety);
+  if (TUT._audio) {
+    try { TUT._audio.pause(); } catch (e) {}
+    TUT._audio.onended = TUT._audio.onerror = TUT._audio.onloadedmetadata = null;
+    TUT._audio = null;
+  }
+}
+
+// גיבוי: קול המערכת (speechSynthesis) — משמש כשאין קובץ מוקלט לשפה/שלב
+function speakTTS(text, scheduleNext, fallbackMs) {
+  if (TUT.muted || !window.speechSynthesis) { scheduleNext(fallbackMs); return; }
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = TUT_LANGS[TUT.lang].tts;
+  const v = bestVoiceFor(u.lang);
+  if (v) u.voice = v;
+  u.rate = 0.94;
+  u.pitch = 1.02;
+  u.onend = () => scheduleNext(900);
+  u.onerror = () => scheduleNext(fallbackMs);
+  speechSynthesis.speak(u);
+}
+
 function tutSpeak(text) {
   if (window.speechSynthesis) speechSynthesis.cancel();
+  stopTutAudio();
   const fallbackMs = Math.max(5000, text.length * 75);
   const scheduleNext = ms => {
     clearTimeout(TUT.timer);
     if (TUT.playing && TUT.open) TUT.timer = setTimeout(tutNext, ms);
   };
-  if (TUT.muted || !window.speechSynthesis) { scheduleNext(fallbackMs); return; }
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = TUT_LANGS[TUT.lang].tts;
-  u.rate = 1;
-  u.onend = () => scheduleNext(900);
-  u.onerror = () => scheduleNext(fallbackMs);
-  speechSynthesis.speak(u);
+  if (TUT.muted) { scheduleNext(fallbackMs); return; }
+
+  // קריינות מוקלטת מראש בקול AI אנושי (audio/<שפה>-<שלב>.mp3).
+  // אם הקובץ לא קיים לשפה/שלב — נופלים חזרה לקול המערכת.
+  const key = TUT_STEPS[TUT.i] && TUT_STEPS[TUT.i].key;
+  let handled = false;
+  const useTTS = () => { if (handled) return; handled = true; speakTTS(text, scheduleNext, fallbackMs); };
+  const audio = new Audio(`audio/${TUT.lang}-${key}.mp3`);
+  TUT._audio = audio;
+  audio.onended = () => { if (!handled) { handled = true; scheduleNext(900); } };
+  audio.onerror = useTTS;
+  // רשת ביטחון: אם הקליפ לא הסתיים תוך אורכו + שנייתיים, ממשיכים בכל זאת
+  audio.onloadedmetadata = () => {
+    clearTimeout(TUT._audioSafety);
+    TUT._audioSafety = setTimeout(() => { if (!handled) { handled = true; scheduleNext(0); } },
+      (audio.duration || 20) * 1000 + 2000);
+  };
+  audio.play().catch(useTTS);
 }
 
 function tutNext() {
@@ -191,17 +255,19 @@ function tutTogglePlay() {
   TUT.playing = !TUT.playing;
   $('#tutPlay').textContent = TUT.playing ? '⏸' : '▶';
   if (TUT.playing) tutShow();
-  else { clearTimeout(TUT.timer); if (window.speechSynthesis) speechSynthesis.cancel(); }
+  else { clearTimeout(TUT.timer); stopTutAudio(); if (window.speechSynthesis) speechSynthesis.cancel(); }
 }
 function tutToggleMute() {
   TUT.muted = !TUT.muted;
   $('#tutMute').textContent = TUT.muted ? '🔇' : '🔊';
+  stopTutAudio();
   if (window.speechSynthesis) speechSynthesis.cancel();
   if (TUT.playing) tutShow();
 }
 function tutClose() {
   TUT.open = false;
   clearTimeout(TUT.timer);
+  stopTutAudio();
   if (window.speechSynthesis) speechSynthesis.cancel();
   $('#tutUi').classList.add('hidden');
 }
@@ -213,7 +279,7 @@ document.querySelectorAll('.lang-btn').forEach(b =>
   b.addEventListener('click', () => tutStart(b.dataset.lang)));
 $('#tutClose').addEventListener('click', tutClose);
 $('#tutPrev').addEventListener('click', tutPrev);
-$('#tutNext').addEventListener('click', () => { clearTimeout(TUT.timer); if (window.speechSynthesis) speechSynthesis.cancel(); tutNext(); });
+$('#tutNext').addEventListener('click', () => { clearTimeout(TUT.timer); stopTutAudio(); if (window.speechSynthesis) speechSynthesis.cancel(); tutNext(); });
 $('#tutPlay').addEventListener('click', tutTogglePlay);
 $('#tutMute').addEventListener('click', tutToggleMute);
 document.addEventListener('keydown', e => {
