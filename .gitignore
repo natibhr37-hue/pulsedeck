@@ -1,0 +1,18 @@
+# תלויות וקבצי בנייה — לא מעלים למאגר (נבנים מקומית)
+node_modules/
+dist/
+dist-app/
+
+# פלט בנייה ולוגים
+*.exe
+*.log
+elog.txt
+eout.txt
+builder-debug.yml
+
+# קבצי בדיקה סינתטיים
+test-*.wav
+
+# מערכת
+Thumbs.db
+.DS_Store

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulseDeck — תוכנת DJ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<header>
+  <div class="logo">Pulse<span>Deck</span> 🎧</div>
+  <div class="tagline">ממשק DJ נקי · תצוגה גדולה · התאמת שירים חכמה</div>
+  <button class="btn tips-btn" id="tutBtn" title="סרטון הדרכה מוקלט ב-5 שפות">🎬 הדרכה</button>
+  <button class="btn tips-btn" id="midiBtn" title="חיבור קונטרולר DJ (פיוניר, טרקטור ועוד)">🎹 MIDI</button>
+  <button class="btn tips-btn" id="tipsBtn">💡 טיפים</button>
+  <div class="master">
+    <label>MASTER</label>
+    <input type="range" id="masterVol" min="0" max="100" value="90">
+  </div>
+</header>
+
+<main>
+  <!-- ================= DECK A ================= -->
+  <section class="deck deck-a" id="deckA">
+    <div class="display">
+      <div class="disp-top">
+        <div class="track-info">
+          <div class="track-title" id="titleA">— טען שיר לדק A —</div>
+          <div class="track-artist" id="artistA">גרור קובץ לכאן או בחר מהספרייה למטה</div>
+        </div>
+        <div class="key-badge" id="keyA">--</div>
+      </div>
+      <div class="disp-metrics">
+        <div class="metric bpm-box">
+          <span class="big-digits" id="bpmA">---.-</span>
+          <span class="metric-lbl">BPM</span>
+        </div>
+        <div class="metric time-box">
+          <span class="big-digits time-el" id="timeElA">00:00</span>
+          <span class="metric-lbl">עבר</span>
+        </div>
+        <div class="metric time-box">
+          <span class="big-digits time-rem" id="timeRemA">-00:00</span>
+          <span class="metric-lbl">נשאר</span>
+        </div>
+        <div class="metric pitch-box">
+          <span class="big-digits small" id="pitchValA">+0.0%</span>
+          <span class="metric-lbl">PITCH</span>
+        </div>
+      </div>
+    </div>
+    <canvas class="wave-zoom" id="zoomA"></canvas>
+    <canvas class="wave-over" id="overA" title="לחץ כדי לדלג"></canvas>
+    <div class="deck-row">
+      <div class="platter" id="platterA" title="גרור לסקראץ' — הפלטה מסתובבת עם השיר">
+        <div class="platter-ring" id="ringA"></div>
+        <div class="platter-disc" id="discA"><div class="platter-label">A</div></div>
+      </div>
+      <div class="deck-controls">
+        <div class="transport">
+          <button class="btn cue" id="cueA" title="בהשמעה: חזרה לנקודת הסימון · בעצירה: קביעת נקודת סימון">CUE</button>
+          <button class="btn play" id="playA" title="נגן / עצור (Q)">▶</button>
+          <button class="btn sync" id="syncA" title="התאמת קצב אוטומטית לדק השני">SYNC</button>
+          <button class="btn loop" id="loopA" title="לולאה של 4 ביטים">LOOP 4</button>
+          <button class="btn small" id="nudgeLA" title="החזק כדי להאט רגעית">◀</button>
+          <button class="btn small" id="nudgeRA" title="החזק כדי להאיץ רגעית">▶</button>
+        </div>
+        <div class="fx-row">
+          <span class="fx-title">FX</span>
+          <button class="btn fx echo" id="fxEchoA" title="אקו מסונכרן לקצב השיר">ECHO</button>
+          <button class="btn fx verb" id="fxVerbA" title="ריוורב — תחושת חלל">REVERB</button>
+          <button class="btn fx flng" id="fxFlngA" title="פלנג'ר — סיבוב מתכתי">FLANGER</button>
+          <button class="btn fx dist" id="fxDistA" title="דיסטורשן — עיוות אנרגטי">DIST</button>
+          <div class="fx-amt">
+            <div class="knob fx-knob" id="fxAmtA" title="עוצמת האפקטים"><div class="knob-dial"></div></div>
+            <span class="knob-lbl">AMOUNT</span>
+          </div>
+        </div>
+        <div class="pitch-row">
+          <span class="pitch-lbl">PITCH</span>
+          <input type="range" class="pitch-slider" id="pitchA" min="-8" max="8" step="0.05" value="0">
+          <button class="btn tiny" id="pitchResetA" title="איפוס פיץ'">0</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MIXER ================= -->
+  <section class="mixer">
+    <button class="btn automix" id="automix" title="סנכרון + מעבר אוטומטי חלק לדק השני">AUTO&nbsp;MIX<span>מעבר אוטומטי</span></button>
+    <div class="channels">
+      <div class="channel">
+        <div class="ch-lbl a">A</div>
+        <div class="knob" id="hiA"><div class="knob-dial"></div></div><span class="knob-lbl">HI</span>
+        <div class="knob" id="midA"><div class="knob-dial"></div></div><span class="knob-lbl">MID</span>
+        <div class="knob" id="lowA"><div class="knob-dial"></div></div><span class="knob-lbl">LOW</span>
+        <div class="knob filter" id="filtA"><div class="knob-dial"></div></div><span class="knob-lbl">FILTER</span>
+        <input type="range" class="v vol" id="volA" min="0" max="100" value="100">
+      </div>
+      <div class="channel">
+        <div class="ch-lbl b">B</div>
+        <div class="knob" id="hiB"><div class="knob-dial"></div></div><span class="knob-lbl">HI</span>
+        <div class="knob" id="midB"><div class="knob-dial"></div></div><span class="knob-lbl">MID</span>
+        <div class="knob filter" id="filtB"><div class="knob-dial"></div></div><span class="knob-lbl">FILTER</span>
+        <div class="knob" id="lowB"><div class="knob-dial"></div></div><span class="knob-lbl">LOW</span>
+        <input type="range" class="v vol" id="volB" min="0" max="100" value="100">
+      </div>
+    </div>
+    <div class="xfade">
+      <span class="xf-lbl a">A</span>
+      <input type="range" id="xf" min="-100" max="100" value="0" title="קרוספיידר — לחיצה כפולה לאיפוס">
+      <span class="xf-lbl b">B</span>
+    </div>
+  </section>
+
+  <!-- ================= DECK B ================= -->
+  <section class="deck deck-b" id="deckB">
+    <div class="display">
+      <div class="disp-top">
+        <div class="track-info">
+          <div class="track-title" id="titleB">— טען שיר לדק B —</div>
+          <div class="track-artist" id="artistB">גרור קובץ לכאן או בחר מהספרייה למטה</div>
+        </div>
+        <div class="key-badge" id="keyB">--</div>
+      </div>
+      <div class="disp-metrics">
+        <div class="metric bpm-box">
+          <span class="big-digits" id="bpmB">---.-</span>
+          <span class="metric-lbl">BPM</span>
+        </div>
+        <div class="metric time-box">
+          <span class="big-digits time-el" id="timeElB">00:00</span>
+          <span class="metric-lbl">עבר</span>
+        </div>
+        <div class="metric time-box">
+          <span class="big-digits time-rem" id="timeRemB">-00:00</span>
+          <span class="metric-lbl">נשאר</span>
+        </div>
+        <div class="metric pitch-box">
+          <span class="big-digits small" id="pitchValB">+0.0%</span>
+          <span class="metric-lbl">PITCH</span>
+        </div>
+      </div>
+    </div>
+    <canvas class="wave-zoom" id="zoomB"></canvas>
+    <canvas class="wave-over" id="overB" title="לחץ כדי לדלג"></canvas>
+    <div class="deck-row">
+      <div class="deck-controls">
+        <div class="transport">
+          <button class="btn cue" id="cueB" title="בהשמעה: חזרה לנקודת הסימון · בעצירה: קביעת נקודת סימון">CUE</button>
+          <button class="btn play" id="playB" title="נגן / עצור (P)">▶</button>
+          <button class="btn sync" id="syncB" title="התאמת קצב אוטומטית לדק השני">SYNC</button>
+          <button class="btn loop" id="loopB" title="לולאה של 4 ביטים">LOOP 4</button>
+          <button class="btn small" id="nudgeLB" title="החזק כדי להאט רגעית">◀</button>
+          <button class="btn small" id="nudgeRB" title="החזק כדי להאיץ רגעית">▶</button>
+        </div>
+        <div class="fx-row">
+          <span class="fx-title">FX</span>
+          <button class="btn fx echo" id="fxEchoB" title="אקו מסונכרן לקצב השיר">ECHO</button>
+          <button class="btn fx verb" id="fxVerbB" title="ריוורב — תחושת חלל">REVERB</button>
+          <button class="btn fx flng" id="fxFlngB" title="פלנג'ר — סיבוב מתכתי">FLANGER</button>
+          <button class="btn fx dist" id="fxDistB" title="דיסטורשן — עיוות אנרגטי">DIST</button>
+          <div class="fx-amt">
+            <div class="knob fx-knob" id="fxAmtB" title="עוצמת האפקטים"><div class="knob-dial"></div></div>
+            <span class="knob-lbl">AMOUNT</span>
+          </div>
+        </div>
+        <div class="pitch-row">
+          <span class="pitch-lbl">PITCH</span>
+          <input type="range" class="pitch-slider" id="pitchB" min="-8" max="8" step="0.05" value="0">
+          <button class="btn tiny" id="pitchResetB" title="איפוס פיץ'">0</button>
+        </div>
+      </div>
+      <div class="platter" id="platterB" title="גרור לסקראץ' — הפלטה מסתובבת עם השיר">
+        <div class="platter-ring" id="ringB"></div>
+        <div class="platter-disc" id="discB"><div class="platter-label">B</div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= המלצות AI ================= -->
+<section class="rec-panel" id="recPanel">
+  <div class="rec-head">
+    <span class="rec-title">🤖 DJ חכם</span>
+    <span class="rec-context" id="aiRec">טען שירים והתחל לנגן — אמליץ לך מה מתאים למיקס הבא</span>
+    <button class="btn tiny pl-open" id="plOpenBtn" title="תאר אירוע — ואבנה לך פלייליסט מסודר עם אוטו-DJ">🪄 בנה לי פלייליסט</button>
+  </div>
+  <div class="rec-cards" id="recCards"></div>
+  <div class="pl-bar hidden" id="plBar">
+    <span class="pl-live">🎶 אוטו-DJ פעיל</span>
+    <span class="pl-next" id="plNext"></span>
+    <button class="btn tiny" id="plStop">⏹ עצור פלייליסט</button>
+  </div>
+</section>
+
+<!-- ================= LIBRARY ================= -->
+<section class="library" id="library">
+  <div class="lib-head">
+    <h2>🎵 ספרייה</h2>
+    <button class="btn add" id="addTracks">+ הוסף שירים</button>
+    <button class="btn add folder" id="addFolder" title="העלאת תיקייה שלמה או כונן נשלף — כולל תתי-תיקיות">📁 הוסף תיקייה</button>
+    <button class="btn tiny filter-btn" id="onlyMatches" title="הצג רק שירים שמתאימים למיקס עם השיר שמתנגן">🎯 רק מתאימים</button>
+    <div class="vibe-search">
+      <input type="text" id="vibeInput" placeholder='🔍 חפש לפי אווירה: "חתונה", "שיא", "רגוע", "מועדון", "128"...'>
+      <button class="btn tiny" id="vibeClear" title="נקה חיפוש">✕</button>
+    </div>
+    <span class="lib-count" id="libCount"></span>
+  </div>
+  <div class="search-status" id="searchStatus"></div>
+  <div class="lib-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="c-title">שיר</th>
+          <th class="c-bpm">BPM</th>
+          <th class="c-key">סולם</th>
+          <th class="c-dur">אורך</th>
+          <th class="c-match">התאמה 🤖</th>
+          <th class="c-load">טעינה</th>
+        </tr>
+      </thead>
+      <tbody id="libBody"></tbody>
+    </table>
+  </div>
+  <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+  <input type="file" id="folderInput" webkitdirectory multiple hidden>
+</section>
+
+<footer>
+  קיצורים: <b>Q</b> נגן/עצור דק A · <b>P</b> נגן/עצור דק B · <b>Esc</b> סגירת חלונות · לחיצה כפולה על כפתור סיבוב = איפוס · לחיצה על פס הסקירה = דילוג · <b>גרירת הפלטה</b> = סקראץ' (עוצר את התקליט כמו ויניל)
+</footer>
+
+<!-- ================= טוסט: המלצת טעינה ================= -->
+<div class="toast hidden" id="toast">
+  <div class="toast-text" id="toastText"></div>
+  <div class="toast-actions">
+    <button class="btn toast-load" id="toastLoad">טען</button>
+    <button class="btn toast-close" id="toastClose">✕</button>
+  </div>
+</div>
+
+<!-- ================= חלון טיפים ================= -->
+<div class="modal hidden" id="tipsModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>💡 טיפים והמלצות</h2>
+      <button class="btn tiny" id="tipsClose">✕ סגור</button>
+    </div>
+    <div class="modal-body" id="tipsBody"></div>
+  </div>
+</div>
+
+<!-- ================= סוכן הפלייליסטים ================= -->
+<div class="modal hidden" id="plModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>🪄 סוכן הפלייליסטים</h2>
+      <button class="btn tiny" id="plClose">✕ סגור</button>
+    </div>
+    <div class="modal-body">
+      <p class="pl-exp">
+        תאר לי את האירוע ואבנה פלייליסט מהספרייה שלך — מסודר בסדר נגינה מקצועי (עליית אנרגיה + מעברים הרמוניים).
+        דוגמאות: <b>"פלייליסט למסיבת טבע רגועה"</b> · <b>"שעה של ריקודים לחתונה"</b> · <b>"8 שירים לפתיחת ערב במועדון"</b>
+      </p>
+      <div class="pl-input-row">
+        <input type="text" id="plPrompt" placeholder="איזה פלייליסט אתה צריך?">
+        <button class="btn pl-build" id="plBuild">🪄 בנה</button>
+      </div>
+      <div id="plResult"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= חלון MIDI ================= -->
+<div class="modal hidden" id="midiModal">
+  <div class="modal-box small">
+    <div class="modal-head">
+      <h2>🎹 קונטרולר MIDI</h2>
+      <button class="btn tiny" id="midiClose">✕ סגור</button>
+    </div>
+    <div class="modal-body midi-body">
+      <div class="midi-status" id="midiStatus"></div>
+      <p class="midi-exp">
+        התוכנה עובדת עם כל קונטרולר DJ ששולח MIDI דרך USB: <b>Pioneer DDJ</b>, <b>Traktor Kontrol</b> (במצב MIDI),
+        <b>Numark</b>, <b>Hercules</b>, <b>Denon</b> ועוד.<br>
+        חבר את הקונטרולר, הפעל <b>מצב לימוד</b>, לחץ על פקד במסך (כפתור, פיידר, כפתור סיבוב או פלטה)
+        ואז הזז את הפקד המתאים בקונטרולר — המיפוי נשמר אוטומטית לפעם הבאה.
+      </p>
+      <div class="midi-actions">
+        <button class="btn midi-learn" id="midiLearnBtn">🎓 מצב לימוד (MIDI Learn)</button>
+        <button class="btn" id="midiClearBtn">🗑 נקה מיפוי</button>
+      </div>
+      <div class="midi-hint" id="midiHint"></div>
+      <div class="midi-count-row">פקדים ממופים: <b id="midiCount">0</b></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= בוחר שפת הדרכה ================= -->
+<div class="modal hidden" id="tutLangModal">
+  <div class="modal-box small">
+    <div class="modal-head">
+      <h2>🎬 סרטון הדרכה — בחר שפה / Choose language</h2>
+      <button class="btn tiny" id="tutLangClose">✕</button>
+    </div>
+    <div class="modal-body lang-grid">
+      <button class="lang-btn" data-lang="he">🇮🇱 עברית</button>
+      <button class="lang-btn" data-lang="en">🇺🇸 English</button>
+      <button class="lang-btn" data-lang="es">🇪🇸 Español</button>
+      <button class="lang-btn" data-lang="fr">🇫🇷 Français</button>
+      <button class="lang-btn" data-lang="ru">🇷🇺 Русский</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= נגן ההדרכה ================= -->
+<div class="hidden" id="tutUi">
+  <div class="tut-spot" id="tutSpot"></div>
+  <div class="tut-panel" id="tutPanel">
+    <div class="tut-head">
+      <span class="tut-step" id="tutStepNum"></span>
+      <button class="btn tiny" id="tutClose">✕</button>
+    </div>
+    <div class="tut-title" id="tutTitle"></div>
+    <div class="tut-text" id="tutText"></div>
+    <div class="tut-controls">
+      <button class="btn tiny tut-btn" id="tutPrev" title="שלב קודם">⏮</button>
+      <button class="btn tiny tut-btn" id="tutPlay" title="נגן / השהה">⏸</button>
+      <button class="btn tiny tut-btn" id="tutNext" title="שלב הבא">⏭</button>
+      <button class="btn tiny tut-btn" id="tutMute" title="קריינות קולית">🔊</button>
+      <div class="tut-progress"><div id="tutBar"></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="midi.js"></script>
+<script src="tutorial.js"></script>
+</body>
+</html>
