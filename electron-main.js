@@ -1,8 +1,18 @@
 'use strict';
 // PulseDeck — תהליך ראשי של Electron: פותח את התוכנה בחלון משלה כמו כל אפליקציית שולחן עבודה
-const { app, BrowserWindow, session, Menu, dialog } = require('electron');
+const { app, BrowserWindow, session, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
+
+// קריאת קבצי אודיו לפי נתיב — לשחזור הספרייה מההפעלה הקודמת
+ipcMain.handle('pulse-read-file', async (e, filePath) => {
+  const buf = await fs.promises.readFile(filePath);
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+});
+ipcMain.handle('pulse-file-exists', async (e, filePath) => {
+  try { await fs.promises.access(filePath); return true; } catch (err) { return false; }
+});
 
 /* ==================== עדכונים אוטומטיים ==================== */
 // בכל פתיחת התוכנה: בדיקה מול GitHub אם יצאה גרסה חדשה, הורדה ברקע,
@@ -54,7 +64,8 @@ function createWindow() {
     title: 'PulseDeck',          // אייקון החלון נלקח אוטומטית מה-exe (electron-builder הטמיע אותו)
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 

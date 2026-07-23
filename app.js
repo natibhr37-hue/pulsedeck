@@ -26,6 +26,11 @@ function fmtTime(s) {
   const m = Math.floor(s / 60), ss = Math.floor(s % 60);
   return String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
 }
+// אורך לולאה לתצוגה: 0.25→"1/4", 0.5→"1/2", אחרת מספר שלם
+function fmtBeats(b) {
+  if (b < 1) return '1/' + Math.round(1 / b);
+  return String(Math.round(b));
+}
 
 /* ==================== עזרי אפקטים ==================== */
 // אימפולס לריוורב — רעש לבן עם דעיכה אקספוננציאלית
@@ -274,7 +279,7 @@ class Deck {
     this.playing = false;
     this.rate = 1;
     this.cue = 0;
-    this.loopOn = false; this.loopStart = 0; this.loopEnd = 0;
+    this.loopOn = false; this.loopStart = 0; this.loopEnd = 0; this.loopBeats = 4;
     this.startOffset = 0; this.startCtx = 0;
     this.source = null;
     this.overCanvas = null; // מצויר מראש
@@ -431,8 +436,17 @@ class Deck {
       const off = this.track.analysis.beatOffset;
       const start = off + Math.floor((this.position - off) / bl) * bl;
       this.loopStart = Math.max(0, start);
-      this.loopEnd = Math.min(this.duration, start + 4 * bl);
+      this.loopEnd = Math.min(this.duration, start + this.loopBeats * bl);
       this.loopOn = true;
+    }
+    updateDeckStatic(this);
+  }
+  // חצי / כפול אורך הלולאה — 1/4 עד 32 ביטים, כמו במערכות מקצועיות
+  setLoopBeats(mult) {
+    this.loopBeats = clamp(this.loopBeats * mult, 0.25, 32);
+    if (this.loopOn && this.track) {
+      const bl = 60 / this.track.analysis.bpm;
+      this.loopEnd = Math.min(this.duration, this.loopStart + this.loopBeats * bl);
     }
     updateDeckStatic(this);
   }
@@ -540,7 +554,7 @@ function autoMix() {
       // אוטו-DJ: הדק שהשתחרר מקבל את השיר הבא בתור
       if (PLAYLIST.active) {
         PLAYLIST.mixArmed = false;
-        if (PLAYLIST.queue.length) from.load(PLAYLIST.queue.shift());
+        if (PLAYLIST.queue.length) loadToDeck(from, PLAYLIST.queue.shift());
         updatePlaylistBar();
       }
       updateRecs();
@@ -710,7 +724,9 @@ function updateDeckStatic(deck) {
   const t = deck.track;
   $('#play' + id).textContent = deck.playing ? '❚❚' : '▶';
   $('#play' + id).classList.toggle('on', deck.playing);
-  $('#loop' + id).classList.toggle('on', deck.loopOn);
+  const loopBtn = $('#loop' + id);
+  loopBtn.classList.toggle('on', deck.loopOn);
+  loopBtn.textContent = 'LOOP ' + fmtBeats(deck.loopBeats);
   $('#deck' + id).classList.toggle('playing', deck.playing);
   if (!t) return;
   $('#title' + id).textContent = t.title;
@@ -1140,7 +1156,9 @@ async function addFiles(files) {
     const rel = f._relPath || f.webkitRelativePath || '';
     const folder = rel.includes('/') ? rel.split('/').slice(0, -1).join('/') : '';
     const folderName = folder ? folder.split('/').pop() : '';
-    const t = { id: ++trackSeq, title, artist, folder, folderName, file: f, buffer: null, analysis: null };
+    // נתיב מלא בדיסק (Electron) — נשמר כדי לשחזר את הספרייה בהפעלה הבאה
+    const path = (window.pulseFS && window.pulseFS.getPathForFile) ? window.pulseFS.getPathForFile(f) : (f.path || '');
+    const t = { id: ++trackSeq, title, artist, folder, folderName, path, file: f, buffer: null, analysis: null };
     library.push(t);
     pending.push(t);
   }
@@ -1158,44 +1176,133 @@ async function addFiles(files) {
     }
     updateRecs();
   }
+  saveLibrary();
 }
 
-/* ==================== רעש סקראץ' — חיכוך ויניל שמגיב למהירות ==================== */
-const NOISE_BUF = (() => {
-  const len = Math.floor(AC.sampleRate * 0.5);
-  const buf = AC.createBuffer(1, len, AC.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-  return buf;
-})();
+/* ---------- שמירת/שחזור הספרייה בין הפעלות (Electron בלבד) ---------- */
+const LIB_KEY = 'pulsedeck-library-v1';
+function saveLibrary() {
+  try {
+    const data = library.filter(t => t.path && t.analysis).map(t => ({
+      path: t.path, title: t.title, artist: t.artist, folder: t.folder, folderName: t.folderName,
+      a: {
+        bpm: t.analysis.bpm, camelot: t.analysis.camelot, keyName: t.analysis.keyName,
+        energy: t.analysis.energy, duration: t.analysis.duration, beatOffset: t.analysis.beatOffset, bps: t.analysis.bps
+      }
+    }));
+    localStorage.setItem(LIB_KEY, JSON.stringify(data));
+  } catch (e) { /* נתעלם — שמירה היא בונוס */ }
+}
+function restoreLibrary() {
+  if (!(window.pulseFS && window.pulseFS.available)) return; // רק בתוכנה המותקנת
+  let data;
+  try { data = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); } catch (e) { return; }
+  if (!Array.isArray(data) || !data.length) return;
+  for (const d of data) {
+    library.push({
+      id: ++trackSeq, title: d.title, artist: d.artist, folder: d.folder, folderName: d.folderName,
+      path: d.path, file: null, buffer: null, analysis: d.a, needsBuffer: true
+    });
+  }
+  renderLibrary();
+  updateRecs();
+  flashRec(`📁 שוחזרו ${data.length} שירים מההפעלה הקודמת`);
+}
 
-function startScratchNoise(deck) {
+// טעינה לדק — קורא ומנתח את הקובץ אם צריך (שיר משוחזר שעדיין אין לו אודיו בזיכרון)
+async function loadToDeck(deck, track) {
+  if (!track) return;
+  if (!track.buffer || !track.analysis || !track.analysis.low) {
+    if (!track.path || !(window.pulseFS && window.pulseFS.available)) {
+      if (track.buffer) { deck.load(track); return; }
+      flashRec('⚠️ הקובץ לא זמין לטעינה'); return;
+    }
+    flashRec(`⏳ טוען את "${escapeHtml(track.title)}"...`);
+    try {
+      const ab = await window.pulseFS.readFile(track.path);
+      track.buffer = await AC.decodeAudioData(ab);
+      track.analysis = await analyzeTrack(track.buffer); // מרענן גם את הגלים
+      track.needsBuffer = false;
+      updateRecs();
+    } catch (e) {
+      flashRec(`⚠️ לא הצלחתי לטעון את "${escapeHtml(track.title)}" (אולי הקובץ הוזז או נמחק)`);
+      return;
+    }
+  }
+  deck.load(track);
+}
+
+/* ==================== סקראץ' אמיתי — גירוד האודיו של השיר קדימה/אחורה ==================== */
+// גרסה הפוכה של האודיו (לניגון לאחור בזמן סקראץ') — נבנית פעם אחת לשיר ונשמרת
+function getReversedBuffer(deck) {
+  const buf = deck.track.buffer;
+  if (deck._revFor === buf && deck._revBuf) return deck._revBuf;
+  const rev = AC.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const src = buf.getChannelData(c), dst = rev.getChannelData(c);
+    for (let i = 0, n = buf.length; i < n; i++) dst[i] = src[n - 1 - i];
+  }
+  deck._revFor = buf; deck._revBuf = rev;
+  return rev;
+}
+
+function startScratch(deck) {
+  deck._stopSource();          // עוצרים את הניגון הרגיל
+  deck.playing = false;
+  const g = AC.createGain();
+  g.gain.value = 0;
+  g.connect(deck.eqLow);       // עובר דרך ה-EQ/פילטר/אפקטים כמו כל אודיו אחר
+  deck._scr = {
+    pos: deck.position, dir: 0, src: null, gain: g,
+    forward: deck.track.buffer, reversed: getReversedBuffer(deck), idle: null
+  };
+}
+
+function scratchStartSource(deck, dir, speed) {
+  const s = deck._scr;
+  if (s.src) { try { s.src.stop(); } catch (e) {} try { s.src.disconnect(); } catch (e) {} }
   const src = AC.createBufferSource();
-  src.buffer = NOISE_BUF; src.loop = true;
-  const bp = AC.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 0.9;
-  const g = AC.createGain(); g.gain.value = 0;
-  src.connect(bp); bp.connect(g); g.connect(master);
-  src.start();
-  deck._scratch = { src, bp, g };
+  let offset;
+  if (dir > 0) { src.buffer = s.forward; offset = s.pos; }
+  else { src.buffer = s.reversed; offset = deck.duration - s.pos; }
+  src.playbackRate.value = clamp(speed, 0.05, 4);
+  src.connect(s.gain);
+  try { src.start(0, clamp(offset, 0, deck.duration - 0.02)); } catch (e) {}
+  s.src = src; s.dir = dir;
 }
-function scratchNoiseMove(deck, speed) {
-  // speed = שניות שיר לשנייה אמיתית — 1.0 בערך כמו נגינה רגילה
-  const s = deck._scratch;
+
+function scratchMove(deck, posDelta, dt) {
+  const s = deck._scr;
   if (!s) return;
+  s.pos = clamp(s.pos + posDelta, 0, deck.duration);
+  deck.startOffset = s.pos;    // הגל, הזמן והפלטה עוקבים אחרי היד
+  const speed = clamp(Math.abs(posDelta) / dt, 0, 4);
+  const dir = posDelta > 0 ? 1 : (posDelta < 0 ? -1 : 0);
   const now = AC.currentTime;
-  const level = clamp(speed * 0.55, 0, 0.5);
-  s.g.gain.cancelScheduledValues(now);
-  s.g.gain.setValueAtTime(Math.max(s.g.gain.value, level), now);
-  s.g.gain.setTargetAtTime(0, now, 0.09); // דועך מהר כשמפסיקים לסובב
-  s.bp.frequency.value = 700 + Math.min(3800, speed * 2200);
+  if (speed < 0.03 || dir === 0) {
+    s.gain.gain.setTargetAtTime(0, now, 0.02);        // יד נעצרה = שקט, כמו ויניל
+  } else {
+    if (dir !== s.dir || !s.src) scratchStartSource(deck, dir, speed);
+    else s.src.playbackRate.setTargetAtTime(clamp(speed, 0.05, 4), now, 0.012);
+    s.gain.gain.setTargetAtTime(0.95, now, 0.008);
+  }
+  clearTimeout(s.idle);
+  s.idle = setTimeout(() => { if (deck._scr) deck._scr.gain.gain.setTargetAtTime(0, AC.currentTime, 0.03); }, 80);
 }
-function stopScratchNoise(deck) {
-  const s = deck._scratch;
+
+function endScratch(deck, resume) {
+  const s = deck._scr;
   if (!s) return;
-  deck._scratch = null;
-  s.g.gain.setTargetAtTime(0, AC.currentTime, 0.03);
-  setTimeout(() => { try { s.src.stop(); } catch (e) {} try { s.src.disconnect(); } catch (e) {} }, 250);
+  deck._scr = null;
+  clearTimeout(s.idle);
+  s.gain.gain.setTargetAtTime(0, AC.currentTime, 0.02);
+  const src = s.src, g = s.gain;
+  setTimeout(() => {
+    if (src) { try { src.stop(); } catch (e) {} try { src.disconnect(); } catch (e) {} }
+    try { g.disconnect(); } catch (e) {}
+  }, 120);
+  deck.startOffset = s.pos;
+  if (resume) deck.play(); else updateDeckStatic(deck);
 }
 
 /* ==================== פלטה: סקראץ' וגרירה ==================== */
@@ -1213,9 +1320,8 @@ function wirePlatter(deck) {
     lastAng = angOf(e);
     lastT = e.timeStamp;
     wasPlaying = deck.playing;
-    if (wasPlaying) deck.pause(); // "עצירת התקליט" בזמן מגע — כמו ויניל אמיתי
     if (AC.state !== 'running') AC.resume();
-    startScratchNoise(deck);
+    startScratch(deck);
     el.classList.add('grabbing');
     e.preventDefault();
   });
@@ -1228,17 +1334,15 @@ function wirePlatter(deck) {
     lastAng = a;
     // סיבוב מלא = 1.8 שניות של שיר (33⅓ סל"ד)
     const posDelta = d / (2 * Math.PI) * 1.8;
-    deck.seek(deck.position + posDelta);
-    const dt = Math.max(1, e.timeStamp - lastT) / 1000;
+    const dt = Math.max(4, e.timeStamp - lastT) / 1000;
     lastT = e.timeStamp;
-    scratchNoiseMove(deck, Math.abs(posDelta) / dt);
+    scratchMove(deck, posDelta, dt);
   });
   const release = () => {
     if (!dragging) return;
     dragging = false;
     el.classList.remove('grabbing');
-    stopScratchNoise(deck);
-    if (wasPlaying) deck.play();
+    endScratch(deck, wasPlaying);
   };
   el.addEventListener('pointerup', release);
   el.addEventListener('pointercancel', release);
@@ -1329,16 +1433,16 @@ function renderPlaylistResult(res, prompt) {
   $('#plRebuild').addEventListener('click', () => $('#plBuild').click());
 }
 
-function startPlaylist(tracks) {
+async function startPlaylist(tracks) {
   if (!tracks || !tracks.length) return;
   PLAYLIST.queue = tracks.slice();
   PLAYLIST.active = true;
   PLAYLIST.mixArmed = false;
-  deckA.load(PLAYLIST.queue.shift());
-  if (PLAYLIST.queue.length) deckB.load(PLAYLIST.queue.shift());
   $('#xf').value = -100;
   applyXfade();
+  await loadToDeck(deckA, PLAYLIST.queue.shift());
   deckA.play();
+  if (PLAYLIST.queue.length) await loadToDeck(deckB, PLAYLIST.queue.shift());
   updatePlaylistBar();
   flashRec(PLAYLIST.mode === 'auto'
     ? '🎶 אוטו-DJ התחיל — המעברים בין השירים יקרו לבד'
@@ -1425,6 +1529,8 @@ function wireDeck(deck) {
   $('#cue' + id).addEventListener('click', () => deck.pressCue());
   $('#sync' + id).addEventListener('click', () => syncDeck(deck));
   $('#loop' + id).addEventListener('click', () => deck.toggleLoop());
+  $('#halve' + id).addEventListener('click', () => deck.setLoopBeats(0.5));
+  $('#double' + id).addEventListener('click', () => deck.setLoopBeats(2));
   $('#pitch' + id).addEventListener('input', e => deck.setRate(1 + (+e.target.value) / 100));
   $('#pitchReset' + id).addEventListener('click', () => {
     $('#pitch' + id).value = 0;
@@ -1461,7 +1567,7 @@ function wireDeck(deck) {
     await addFiles(await filesFromDataTransfer(e.dataTransfer));
     const added = library.slice(before);
     const ready = added.find(t => t.analysis);
-    if (ready) deck.load(ready);
+    if (ready) loadToDeck(deck, ready);
   });
 }
 
@@ -1528,7 +1634,7 @@ $('#libBody').addEventListener('click', e => {
   const btn = e.target.closest('.load-btn');
   if (!btn) return;
   const t = library.find(x => x.id === +btn.dataset.id);
-  if (t && t.analysis) decks[btn.dataset.deck].load(t);
+  if (t && t.analysis) loadToDeck(decks[btn.dataset.deck], t);
 });
 
 // פאנל המלצות — טעינה בלחיצה
@@ -1536,14 +1642,14 @@ $('#recCards').addEventListener('click', e => {
   const btn = e.target.closest('.rec-load');
   if (!btn) return;
   const t = library.find(x => x.id === +btn.dataset.id);
-  if (t && t.analysis) decks[btn.dataset.deck].load(t);
+  if (t && t.analysis) loadToDeck(decks[btn.dataset.deck], t);
 });
 
 // טוסט המלצת טעינה
 $('#toastLoad').addEventListener('click', e => {
   const t = library.find(x => x.id === +e.currentTarget.dataset.id);
   hideToast();
-  if (t && t.analysis) decks[e.currentTarget.dataset.deck].load(t);
+  if (t && t.analysis) loadToDeck(decks[e.currentTarget.dataset.deck], t);
 });
 $('#toastClose').addEventListener('click', hideToast);
 
@@ -1602,4 +1708,5 @@ setInterval(() => { if (refDeck()) renderRecCards(); }, 3000);
 
 applyXfade();
 renderLibrary();
+restoreLibrary(); // שחזור הספרייה מההפעלה הקודמת (בתוכנה המותקנת)
 rafLoop();
