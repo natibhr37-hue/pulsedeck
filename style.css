@@ -65,10 +65,12 @@ header {
 /* ---------- layout ---------- */
 main {
   display: grid;
-  grid-template-columns: 1fr 240px 1fr;
+  grid-template-columns: minmax(0, 1fr) 220px minmax(0, 1fr);
   gap: 14px;
   direction: ltr; /* פריסת דקים סטנדרטית: A משמאל, B מימין */
 }
+/* minmax(0,...) מאפשר לעמודות להתכווץ מתחת לרוחב התוכן — בלי זה התוכן "בורח" ונחתך */
+.deck { min-width: 0; }
 
 .deck, .mixer, .rec-panel, .library {
   background: var(--glass);
@@ -111,7 +113,7 @@ main {
   border-radius: 10px; padding: 7px 13px; min-width: 58px; text-align: center;
   border: 1px solid var(--line-strong);
 }
-.disp-metrics { display: flex; gap: 22px; margin-top: 12px; align-items: flex-end; }
+.disp-metrics { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 12px; align-items: flex-end; }
 .metric { display: flex; flex-direction: column; }
 .big-digits {
   font-family: var(--mono); font-size: 44px; font-weight: 700; line-height: 1;
@@ -318,6 +320,10 @@ input[type=range].v.vol { accent-color: #e2e8f0; }
 }
 .pl-live { font-weight: 800; color: var(--good); animation: pulse 1.6s infinite; }
 .pl-next { flex: 1; color: #cdd5e8; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#plModeBtn.manual { background: #f59e0b; color: #331d02; border-color: transparent; }
+.btn.pl-now { background: var(--good); color: #05240f; border: none; font-weight: 800; }
+.btn.pl-now:hover { filter: brightness(1.12); }
+.btn.pl-now:disabled { background: var(--glass2); color: var(--dim); cursor: not-allowed; filter: none; }
 
 /* ---------- library ---------- */
 .library { margin-top: 14px; padding: 12px 14px; }
@@ -610,8 +616,10 @@ body.midi-learn-mode [data-midi] {
 }
 
 /* ---------- responsive ---------- */
-@media (max-width: 1150px) {
+/* מתחת לרוחב הזה אין מספיק מקום לשני הדקים זה לצד זה — עוברים לעמודה אחת
+   (הדקים אחד מעל השני) כדי שכלום לא ייחתך */
+@media (max-width: 1280px) {
   main { grid-template-columns: 1fr; }
   .mixer { order: 3; }
-  .channels { gap: 40px; }
+  .channels { gap: 40px; justify-content: center; }
 }

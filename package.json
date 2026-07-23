@@ -1,6 +1,6 @@
 {
   "name": "pulsedeck",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "PulseDeck — DJ software with big display, AI track matching, effects, MIDI and multi-language tutorial",
   "main": "electron-main.js",
   "author": "PulseDeck",

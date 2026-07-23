@@ -597,14 +597,20 @@ function makeKnob(el, { min, max, def, onChange }) {
 }
 
 /* ==================== ציור גלים ==================== */
+// מדידת מידות הקנבס יקרה (מאלצת חישוב פריסה) — מודדים רק בהתחלה ובשינוי גודל,
+// לא בכל פריים. זה מונע את ה"תקיעות" בסיבוב הפלטה.
+let _canvasDirty = true;
+window.addEventListener('resize', () => { _canvasDirty = true; });
 function setupCanvas(cv) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth, h = cv.clientHeight;
-  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
-    cv.width = Math.round(w * dpr);
-    cv.height = Math.round(h * dpr);
+  if (!cv._ctx) cv._ctx = cv.getContext('2d');
+  if (_canvasDirty || !cv._measured) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== w) cv.width = w;
+    if (cv.height !== h) cv.height = h;
+    cv._measured = true;
   }
-  return cv.getContext('2d');
+  return cv._ctx;
 }
 
 function drawZoom(deck, cv) {
@@ -717,9 +723,20 @@ function updateDeckStatic(deck) {
   $('#pitchVal' + id).textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
 }
 
+// מטמון אלמנטים — כדי לא לחפש ב-DOM בכל פריים (מקור נוסף לתקיעות)
+const RAF_ELS = {};
+for (const id of ['A', 'B']) {
+  RAF_ELS[id] = {
+    disc: $('#disc' + id), ring: $('#ring' + id),
+    zoom: $('#zoom' + id), over: $('#over' + id),
+    timeEl: $('#timeEl' + id), timeRem: $('#timeRem' + id), bpm: $('#bpm' + id),
+    lastRingPct: -1, lastTimeEl: '', lastTimeRem: ''
+  };
+}
+
 function rafLoop() {
-  // אוטו-DJ: כשהשיר החי מתקרב לסופו — מפעילים מעבר אוטומטי לדק השני
-  if (PLAYLIST.active && !autoMixBusy && !PLAYLIST.mixArmed) {
+  // אוטו-DJ: במצב אוטומטי בלבד — כשהשיר החי מתקרב לסופו מפעילים מעבר לדק השני
+  if (PLAYLIST.active && PLAYLIST.mode === 'auto' && !autoMixBusy && !PLAYLIST.mixArmed) {
     const live = deckA.playing ? deckA : (deckB.playing ? deckB : null);
     if (live && live.track) {
       const next = otherDeck(live);
@@ -731,25 +748,32 @@ function rafLoop() {
     }
   }
   for (const deck of [deckA, deckB]) {
+    const els = RAF_ELS[deck.id];
     // לולאה
     if (deck.loopOn && deck.playing && deck.position >= deck.loopEnd - 0.01) {
       deck.seek(deck.loopStart);
     }
-    drawZoom(deck, $('#zoom' + deck.id));
-    drawOverview(deck, $('#over' + deck.id));
-    // פלטה מסתובבת: 33⅓ סל"ד = סיבוב מלא כל 1.8 שניות של שיר
+    drawZoom(deck, els.zoom);
+    drawOverview(deck, els.over);
     if (deck.track) {
-      $('#disc' + deck.id).style.transform = `rotate(${(deck.position / 1.8 * 360) % 360}deg)`;
-      const pct = deck.position / deck.duration * 100;
-      $('#ring' + deck.id).style.background =
-        `conic-gradient(from -90deg, ${DECK_COLORS[deck.id].mid} ${pct}%, rgba(255,255,255,0.07) ${pct}%)`;
-    }
-    if (deck.track) {
-      $('#timeEl' + deck.id).textContent = fmtTime(deck.position);
-      $('#timeRem' + deck.id).textContent = '-' + fmtTime(deck.duration - deck.position);
-      if (deck.playing) $('#bpm' + deck.id).textContent = deck.effBpm.toFixed(1);
+      // פלטה מסתובבת: 33⅓ סל"ד = סיבוב מלא כל 1.8 שניות של שיר (transform בלבד — חלק ב-GPU)
+      els.disc.style.transform = `rotate(${(deck.position / 1.8 * 360) % 360}deg)`;
+      // טבעת ההתקדמות: קוניק-גרדיאנט יקר לצייר — מעדכנים רק כשאחוז ההתקדמות משתנה
+      const pct = Math.round(deck.position / deck.duration * 500) / 5;
+      if (pct !== els.lastRingPct) {
+        els.lastRingPct = pct;
+        els.ring.style.background =
+          `conic-gradient(from -90deg, ${DECK_COLORS[deck.id].mid} ${pct}%, rgba(255,255,255,0.07) ${pct}%)`;
+      }
+      // זמנים — מעדכנים רק כשהטקסט השתנה בפועל (פעם בשנייה)
+      const te = fmtTime(deck.position);
+      if (te !== els.lastTimeEl) { els.lastTimeEl = te; els.timeEl.textContent = te; }
+      const tr = '-' + fmtTime(deck.duration - deck.position);
+      if (tr !== els.lastTimeRem) { els.lastTimeRem = tr; els.timeRem.textContent = tr; }
+      if (deck.playing) els.bpm.textContent = deck.effBpm.toFixed(1);
     }
   }
+  _canvasDirty = false; // המדידה (אם הייתה) בוצעה לכל הקנבסים בפריים הזה
   requestAnimationFrame(rafLoop);
 }
 
@@ -930,14 +954,14 @@ function candidatesFor(deck, excludeDeck) {
 
 function pctColor(s) { return s >= 80 ? '#4ade80' : s >= MATCH_THRESHOLD ? '#facc15' : '#f87171'; }
 
-function updateRecs() {
+// עדכון קל: רק כרטיסי ההמלצה והטקסט — בלי בנייה מחדש של טבלת הספרייה
+function renderRecCards() {
   const el = $('#aiRec');
   const cardsEl = $('#recCards');
   const ref = refDeck();
   if (!ref || !ref.track) {
     el.innerHTML = 'טען שירים והתחל לנגן — אמליץ לך מה מתאים למיקס הבא';
     cardsEl.innerHTML = '';
-    renderLibrary();
     return;
   }
   const adj = otherDeck(ref);
@@ -959,6 +983,11 @@ function updateRecs() {
       </div>`;
     }).join('');
   }
+}
+
+// עדכון מלא: המלצות + טבלת הספרייה. נקרא רק בשינוי אמיתי (טעינה, הוספה, סינון)
+function updateRecs() {
+  renderRecCards();
   renderLibrary();
 }
 
@@ -1216,7 +1245,7 @@ function wirePlatter(deck) {
 }
 
 /* ==================== 🪄 סוכן הפלייליסטים + אוטו-DJ ==================== */
-const PLAYLIST = { queue: [], active: false, mixArmed: false, lastBuilt: null };
+const PLAYLIST = { queue: [], active: false, mixArmed: false, lastBuilt: null, mode: 'auto' };
 
 function buildPlaylist(prompt) {
   const parsed = parseVibe(prompt);
@@ -1311,13 +1340,32 @@ function startPlaylist(tracks) {
   applyXfade();
   deckA.play();
   updatePlaylistBar();
-  flashRec('🎶 אוטו-DJ התחיל — המעברים בין השירים יקרו לבד');
+  flashRec(PLAYLIST.mode === 'auto'
+    ? '🎶 אוטו-DJ התחיל — המעברים בין השירים יקרו לבד'
+    : '🎶 אוטו-DJ (ידני) — לחץ "הבא עכשיו" כשתרצה להכניס את השיר הבא');
 }
 
 function stopPlaylist() {
   PLAYLIST.active = false;
   PLAYLIST.queue = [];
   PLAYLIST.mixArmed = false;
+  updatePlaylistBar();
+}
+
+// מעבר יזום ע"י ה-DJ (מצב ידני, או הקדמה במצב אוטומטי)
+function playlistMixNow() {
+  if (!PLAYLIST.active || autoMixBusy || PLAYLIST.mixArmed) return;
+  const live = deckA.playing ? deckA : (deckB.playing ? deckB : null);
+  if (!live) return;
+  const next = otherDeck(live);
+  if (!next.track || next.playing) { flashRec('ℹ️ אין שיר מוכן בדק הסמוך'); return; }
+  PLAYLIST.mixArmed = true;
+  autoMix();
+  updatePlaylistBar();
+}
+
+function setPlaylistMode(mode) {
+  PLAYLIST.mode = mode;
   updatePlaylistBar();
 }
 
@@ -1332,6 +1380,17 @@ function updatePlaylistBar() {
   $('#plNext').textContent = upcoming.length
     ? 'הבא: ' + upcoming.join(' ← ') + (PLAYLIST.queue.length > 2 ? ` (+${PLAYLIST.queue.length - 2} בתור)` : '')
     : 'זה השיר האחרון בפלייליסט';
+  // מצב + כפתור "הבא עכשיו"
+  const modeBtn = $('#plModeBtn');
+  if (modeBtn) {
+    modeBtn.textContent = PLAYLIST.mode === 'auto' ? '🔄 מעבר: אוטומטי' : '✋ מעבר: ידני';
+    modeBtn.classList.toggle('manual', PLAYLIST.mode === 'manual');
+  }
+  const nowBtn = $('#plNowBtn');
+  if (nowBtn) {
+    const canMix = !autoMixBusy && !PLAYLIST.mixArmed && (nextDeck.track && !nextDeck.playing);
+    nowBtn.disabled = !canMix;
+  }
 }
 
 /* ==================== גרירת תיקיות: סריקה רקורסיבית ==================== */
@@ -1508,6 +1567,8 @@ $('#plStop').addEventListener('click', () => {
   stopPlaylist();
   flashRec('⏹ אוטו-DJ נעצר — השליטה חזרה אליך');
 });
+$('#plModeBtn').addEventListener('click', () => setPlaylistMode(PLAYLIST.mode === 'auto' ? 'manual' : 'auto'));
+$('#plNowBtn').addEventListener('click', playlistMixNow);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') $('#plModal').classList.add('hidden');
 });
@@ -1536,8 +1597,8 @@ document.addEventListener('keydown', e => {
   if (k === 'p') deckB.toggle();
 });
 
-// המלצות מתעדכנות כשה-BPM האפקטיבי משתנה (פיץ' וכו')
-setInterval(() => { if (refDeck()) updateRecs(); }, 3000);
+// המלצות מתעדכנות כשה-BPM האפקטיבי משתנה (פיץ' וכו') — עדכון קל בלבד, בלי בניית הטבלה
+setInterval(() => { if (refDeck()) renderRecCards(); }, 3000);
 
 applyXfade();
 renderLibrary();

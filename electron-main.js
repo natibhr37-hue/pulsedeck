@@ -51,8 +51,7 @@ function createWindow() {
     minHeight: 720,
     backgroundColor: '#05060c',
     autoHideMenuBar: true,       // בלי סרגל תפריטים — מסך נקי
-    icon: path.join(__dirname, 'icon.ico'),
-    title: 'PulseDeck',
+    title: 'PulseDeck',          // אייקון החלון נלקח אוטומטית מה-exe (electron-builder הטמיע אותו)
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false
@@ -62,6 +61,7 @@ function createWindow() {
   // אישור אוטומטי להרשאות MIDI / מיקרופון וכו' — קונטרולרים יעבדו בלי הודעות
   win.webContents.session.setPermissionRequestHandler((wc, permission, cb) => cb(true));
 
+  win.maximize();        // פתיחה במסך מלא כמו תוכנה מקצועית
   win.loadFile('index.html');
   setupUpdates(win);
   return win;
